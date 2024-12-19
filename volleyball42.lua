@@ -10,6 +10,41 @@ local END_POSITION_TOLERANCE = 3
 -- Variable to store the last trajectory end position
 local lastEndPosition = nil
 
+-- Constant number of trajectory parts
+local NUM_TRAJECTORY_PARTS = 25
+
+-- Table to store pre-created trajectory parts and lines
+local trajectoryParts = {}
+local trajectoryLines = {}
+
+-- Function to create trajectory parts and lines once
+local function createTrajectoryParts()
+    for i = 1, NUM_TRAJECTORY_PARTS do
+        -- Create trajectory parts
+        local part = Instance.new("Part")
+        part.Name = "TrajectoryPart"
+        part.Size = Vector3.new(0.2, 0.2, 0.2)
+        part.Anchored = true
+        part.CanCollide = false
+        part.BrickColor = BrickColor.new("Bright red")  -- Initially red
+        part.Parent = workspace
+        table.insert(trajectoryParts, part)
+
+        -- Create trajectory lines
+        if i < NUM_TRAJECTORY_PARTS then
+            local line = Instance.new("Part")
+            line.Name = "TrajectoryLine"
+            line.Size = Vector3.new(0.1, 0.1, 1)
+            line.Anchored = true
+            line.CanCollide = false
+            line.BrickColor = BrickColor.new("Lime green")  -- Neon green color
+            line.Material = Enum.Material.Neon  -- Set material to Neon
+            line.Parent = workspace
+            table.insert(trajectoryLines, line)
+        end
+    end
+end
+
 -- Function to calculate trajectory and visualize it
 local function visualizeTrajectory(ball)
     -- Get the current end position of the trajectory
@@ -70,46 +105,27 @@ local function visualizeTrajectory(ball)
     -- Update the last end position
     lastEndPosition = newEndPosition
 
-    -- Delete any old trajectory parts and lines before calculating a new one
-    for _, obj in ipairs(workspace:GetChildren()) do
-        if obj.Name == "TrajectoryPart" or obj.Name == "TrajectoryLine" then
-            obj:Destroy()
-        end
-    end
+    -- Move trajectory parts and lines along the trajectory
+    local currentIndex = 1
+    local maxParts = math.min(#trajectoryPoints, NUM_TRAJECTORY_PARTS)
+    for i = 1, maxParts do
+        local point = trajectoryPoints[i]
+        local part = trajectoryParts[i]
+        local line = trajectoryLines[i]
 
-    -- Draw trajectory visualization
-    local trajectoryParts = {}
-    local trajectoryLines = {}
-    for i, point in ipairs(trajectoryPoints) do
-        local part = Instance.new("Part")
-        part.Name = "TrajectoryPart"  -- Name to easily identify it later for deletion
-        part.Size = Vector3.new(0.2, 0.2, 0.2)
+        -- Move the trajectory part
         part.Position = point
-        part.Anchored = true
-        part.CanCollide = false  -- Set CanCollide to false for all trajectory parts
-        part.BrickColor = BrickColor.new("Bright red")  -- Initially red
-        part.Parent = workspace
-        table.insert(trajectoryParts, part)
 
-        -- Connect the trajectory points with a neon green line
-        if i < #trajectoryPoints then
+        -- Update the trajectory line between this part and the next (if exists)
+        if i < maxParts then
             local nextPoint = trajectoryPoints[i + 1]
-            local line = Instance.new("Part")
-            line.Name = "TrajectoryLine"  -- Name to easily identify it later for deletion
             line.Size = Vector3.new(0.1, 0.1, (nextPoint - point).Magnitude)
             line.Position = (point + nextPoint) / 2
-            line.Anchored = true
-            line.CanCollide = false
-            line.BrickColor = BrickColor.new("Lime green")  -- Neon green color
-            line.Material = Enum.Material.Neon  -- Set material to Neon
-            line.CFrame = CFrame.new(point, nextPoint)  -- Align with the direction of the line
-            line.Parent = workspace
-            table.insert(trajectoryLines, line)
+            line.CFrame = CFrame.new(point, nextPoint)
         end
     end
 
     -- Monitor ball's position and velocity
-    local currentIndex = 1
     game:GetService("RunService").Stepped:Connect(function(_, deltaTime)
         if not ball.Parent or #trajectoryParts == 0 then
             return
@@ -121,34 +137,22 @@ local function visualizeTrajectory(ball)
             -- Calculate the distance between the ball's position and the trajectory point
             local distanceToPoint = (currentPart.Position - ballPart.Position).Magnitude
             
-            -- If the ball is within the deviation tolerance, delete the part
+            -- If the ball is within the deviation tolerance, move to the next part
             if distanceToPoint <= DEVIATION_TOLERANCE then
-                -- Delete the trajectory part
-                currentPart:Destroy()
-
-                -- Delete the trajectory line between this part and the next
-                if currentIndex < #trajectoryLines then
-                    trajectoryLines[currentIndex]:Destroy()
-                end
-
-                -- Move to the next point
+                -- Move to the next part
                 currentIndex = currentIndex + 1
             elseif distanceToPoint > DEVIATION_TOLERANCE * 3 then
-                -- Ball veered too far off course, delete all parts and recreate the trajectory
-                -- Delete all previous trajectory parts and lines
-                for _, part in ipairs(trajectoryParts) do
-                    part:Destroy()
-                end
-                for _, line in ipairs(trajectoryLines) do
-                    line:Destroy()
-                end
-                -- Recreate trajectory
+                -- Ball veered too far off course, recalculate trajectory
+                -- Recreate trajectory visualization
                 visualizeTrajectory(ball)
                 return
             end
         end
     end)
 end
+
+-- Create trajectory parts and lines when the game starts
+createTrajectoryParts()
 
 -- Listen for new balls added to the workspace and visualize their trajectory
 workspace.ChildAdded:Connect(function(child)
